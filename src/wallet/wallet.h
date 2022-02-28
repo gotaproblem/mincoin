@@ -7,6 +7,7 @@
 #define BITCOIN_WALLET_WALLET_H
 
 #include "amount.h"
+#include "auxpow.h" // contains CMerkleTx
 #include "streams.h"
 #include "tinyformat.h"
 #include "ui_interface.h"
@@ -168,6 +169,7 @@ struct COutputEntry
     int vout;
 };
 
+#ifdef OLD
 /** A transaction with a merkle branch linking it to the block chain. */
 class CMerkleTx
 {
@@ -245,6 +247,7 @@ public:
     const uint256& GetHash() const { return tx->GetHash(); }
     bool IsCoinBase() const { return tx->IsCoinBase(); }
 };
+#endif
 
 /** 
  * A transaction with a bunch of additional info that only the owner cares about.

@@ -3,6 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include "arith_uint256.h"
+#include "crypto/scrypt.h"
 #include "chainparams.h"
 #include "consensus/merkle.h"
 
@@ -74,9 +76,9 @@ public:
         consensus.BIP34Hash = uint256S("0x1dcbed4c39397993c434cc49e51af50d775df85aeb17c1dec332ba1820a8c1a0");
         consensus.BIP65Height = 2081125; // 74658d61423c04a82d8853ea7ba80dbea0b05515b5c699de82ce7adb3894b0bd
         consensus.BIP66Height = 2081125; // 74658d61423c04a82d8853ea7ba80dbea0b05515b5c699de82ce7adb3894b0bd
-        consensus.powLimit = uint256S("0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.powLimit = uint256S("0x0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 60 * 60; // sixty minutes
-        consensus.nClassicPowTargetTimespan = 12 * 60 * 60; // twelve hours
+//        consensus.nClassicPowTargetTimespan = 12 * 60 * 60; // twelve hours
         consensus.nPowTargetSpacing = 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
@@ -101,6 +103,12 @@ public:
 
         // By default assume that the signatures in ancestors of this block are valid.
         consensus.defaultAssumeValid = uint256S("0x230cdec4c3c064f886569e9ad6d7561f43e47754ba13b17247ba61b47f53f8c1"); //2432033
+
+	/* AuxPow rules */
+	consensus.nAuxpowChainId        = 0x05b3;   /* Mincoin CoinMarketCap ranking on Genesis date */
+        consensus.nAuxpowStartHeight    = 2000;
+        consensus.fStrictChainId        = true;
+        consensus.nLegacyBlocksBefore   = 2000;
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
@@ -168,7 +176,7 @@ public:
         consensus.BIP66Height = 751; // ba178015425b75c85985a89f162a02f96cbd5bbb91c8b1415e9368d369eb7948
         consensus.powLimit = uint256S("0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 60 * 60; // sixty minutes
-        consensus.nClassicPowTargetTimespan = 12 * 60 * 60; // twelve hours
+//        consensus.nClassicPowTargetTimespan = 12 * 60 * 60; // twelve hours
         consensus.nPowTargetSpacing = 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
@@ -193,6 +201,13 @@ public:
 
         // By default assume that the signatures in ancestors of this block are valid.
         consensus.defaultAssumeValid = uint256S("0x3108d2d8ce7993ee31c01b1c60b133ed44b7fb768e1709b4e7bf551606665671"); //129907
+
+
+	/* AuxPow rules */
+        consensus.nAuxpowChainId        = 0x05b4; /* mainnet + 1 */
+        consensus.nAuxpowStartHeight    = 120;
+        consensus.fStrictChainId        = true;
+        consensus.nLegacyBlocksBefore   = 120;
 
         pchMessageStart[0] = 0x80;
         pchMessageStart[1] = 0x80;
@@ -255,7 +270,7 @@ public:
         consensus.BIP66Height = 1251; // BIP66 activated on regtest (Used in rpc activation tests)
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 60 * 60; // sixty minutes
-        consensus.nClassicPowTargetTimespan = 12 * 60 * 60; // twelve hours
+//        consensus.nClassicPowTargetTimespan = 12 * 60 * 60; // twelve hours
         consensus.nPowTargetSpacing = 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;

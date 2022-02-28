@@ -6,12 +6,16 @@
 #include "validation.h"
 
 #include "arith_uint256.h"
+#include "auxpow.h"
 #include "chainparams.h"
 #include "checkpoints.h"
 #include "checkqueue.h"
 #include "consensus/consensus.h"
 #include "consensus/merkle.h"
 #include "consensus/validation.h"
+
+#include "crypto/scrypt.h"
+
 #include "hash.h"
 #include "init.h"
 #include "policy/fees.h"
@@ -47,7 +51,7 @@
 #include <boost/thread.hpp>
 
 #if defined(NDEBUG)
-# error "Mincoin cannot be compiled without assertions."
+# error "Apcoin cannot be compiled without assertions."
 #endif
 
 /**
@@ -88,7 +92,7 @@ static void CheckBlockIndex(const Consensus::Params& consensusParams);
 /** Constant stuff for coinbase transactions we create: */
 CScript COINBASE_FLAGS;
 
-const std::string strMessageMagic = "Mincoin Signed Message:\n";
+const std::string strMessageMagic = "Apcoin Signed Message:\n";
 
 // Internal stuff
 namespace {
@@ -980,7 +984,7 @@ bool AcceptToMemoryPoolWorker(CTxMemPool& pool, CValidationState& state, const C
         // Remove conflicting transactions from the mempool
         BOOST_FOREACH(const CTxMemPool::txiter it, allConflicting)
         {
-            LogPrint("mempool", "replacing tx %s with %s for %s MNC additional fees, %d delta bytes\n",
+            LogPrint("mempool", "replacing tx %s with %s for %s APC additional fees, %d delta bytes\n",
                     it->GetTx().GetHash().ToString(),
                     hash.ToString(),
                     FormatMoney(nModifiedFees - nConflictingFees),
@@ -1108,6 +1112,54 @@ bool GetTransaction(const uint256 &hash, CTransactionRef &txOut, const Consensus
 // CBlock and CBlockIndex
 //
 
+bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params)
+{
+    /* Except for legacy blocks with full version 1, ensure that
+       the chain ID is correct.  Legacy blocks are not allowed since
+       the merge-mining start, which is checked in AcceptBlockHeader
+       where the height is known.  */
+    if (!block.IsLegacy() && params.fStrictChainId
+        && block.GetChainId() != params.nAuxpowChainId)
+        return error("%s : block does not have our chain ID"
+                     " (got %d, expected %d, full nVersion %d)",
+                     __func__, block.GetChainId(),
+                     params.nAuxpowChainId, block.nVersion);
+
+    /* If there is no auxpow, just check the block hash.  */
+    if (!block.auxpow)
+    {
+        if (block.IsAuxpow())
+            return error("%s : no auxpow on block with auxpow version",
+                         __func__);
+
+
+        //if (!CheckProofOfWork(block.GetHash(), block.nBits, params))
+        if (!CheckProofOfWork(block.GetPoWHash(), block.nBits, params))
+            return error("%s : non-AUX proof of work failed", __func__);
+
+        return true;
+    }
+
+    /* We have auxpow.  Check it.  */
+
+    if (!block.IsAuxpow())
+        return error("%s : auxpow on block with non-auxpow version", __func__);
+
+    /* Temporary check:  Disallow parent blocks with auxpow version.  This is
+       for compatibility with the old client.  */
+    /* FIXME: Remove this check with a hardfork later on.  */
+    if (block.auxpow->getParentBlock().IsAuxpow())
+        return error("%s : auxpow parent block has auxpow version", __func__);
+
+    if (!block.auxpow->check(block.GetHash(), block.GetChainId(), params))
+        return error("%s : AUX POW is not valid", __func__);
+
+    if (!CheckProofOfWork(block.auxpow->getParentBlockHash(), block.nBits, params))
+        return error("%s : AUX proof of work failed\nblock.auxPoW->getParentBlockHash() %s", __func__, block.auxpow->getParentBlockHash().ToString() );
+
+    return true;
+}
+
 bool WriteBlockToDisk(const CBlock& block, CDiskBlockPos& pos, const CMessageHeader::MessageStartChars& messageStart)
 {
     // Open history file to append
@@ -1129,7 +1181,10 @@ bool WriteBlockToDisk(const CBlock& block, CDiskBlockPos& pos, const CMessageHea
     return true;
 }
 
-bool ReadBlockFromDisk(CBlock& block, const CDiskBlockPos& pos, const Consensus::Params& consensusParams)
+//bool ReadBlockFromDisk(CBlock& block, const CDiskBlockPos& pos, const Consensus::Params& consensusParams)
+
+template<typename T>
+static bool ReadBlockOrHeader(T& block, const CDiskBlockPos& pos, const Consensus::Params& consensusParams)
 {
     block.SetNull();
 
@@ -1147,33 +1202,64 @@ bool ReadBlockFromDisk(CBlock& block, const CDiskBlockPos& pos, const Consensus:
     }
 
     // Check the header
-    if (!CheckProofOfWork(block.GetPoWHash(), block.nBits, consensusParams))
+    //if (!CheckProofOfWork(block.GetPoWHash(), block.nBits, consensusParams))
+	if (!CheckProofOfWork(block, consensusParams))
         return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
 
     return true;
 }
 
-bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex, const Consensus::Params& consensusParams)
+//bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex, const Consensus::Params& consensusParams)
+template<typename T>
+static bool ReadBlockOrHeader(T& block, const CBlockIndex* pindex, const Consensus::Params& consensusParams)
 {
-    if (!ReadBlockFromDisk(block, pindex->GetBlockPos(), consensusParams))
-        return false;
+    //if (!ReadBlockFromDisk(block, pindex->GetBlockPos(), consensusParams))
+    if (!ReadBlockOrHeader(block, pindex->GetBlockPos(), consensusParams))  
+		return false;
     if (block.GetHash() != pindex->GetBlockHash())
         return error("ReadBlockFromDisk(CBlock&, CBlockIndex*): GetHash() doesn't match index for %s at %s",
                 pindex->ToString(), pindex->GetBlockPos().ToString());
     return true;
 }
 
+bool ReadBlockFromDisk(CBlock& block, const CDiskBlockPos& pos, const Consensus::Params& consensusParams)
+{
+    return ReadBlockOrHeader(block, pos, consensusParams);
+}
+
+bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex, const Consensus::Params& consensusParams)
+{
+    return ReadBlockOrHeader(block, pindex, consensusParams);
+}
+
+bool ReadBlockHeaderFromDisk(CBlockHeader& block, const CBlockIndex* pindex, const Consensus::Params& consensusParams)
+{
+    return ReadBlockOrHeader(block, pindex, consensusParams);
+}
+
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 {
-    CAmount nSubsidy = 2 * COIN;
-    if (nHeight < 1440)
-        nSubsidy = 500 * COIN; // Mincoin: 719.5K MNC in timespans 1-2
-    else if (nHeight < 2880)
-        nSubsidy = 100 * COIN; // Mincoin: 144K MNC in timespans 3-4
-    else if (nHeight < 4320)
-        nSubsidy = 50 * COIN;  // Mincoin: 72K MNC in timespans 5-6
-    else if (nHeight > 4536544)
-        nSubsidy =  0;         // Mincoin: 10M total MNC
+    CAmount nSubsidy = 10000 * COIN;
+
+    /* every 100,000 blocks (~35 days), reward the lucky miner */
+	if ( nHeight > 0 && ( nHeight % 100000 ) == 0 ) {
+		nSubsidy = 100000 * COIN;
+    }
+
+    /* every 1,000,000 blocks (~350 days), reward the lucky miner */
+    if ( nHeight > 0 && ( nHeight % 1000000 ) == 0 ) {
+        nSubsidy = 1000000 * COIN;
+    }
+    
+    /* cryptodad */
+    /* 9,223,372,036,854,775,807 (0x7fff ffff ffff ffff) is largest 64bit signed number */
+    /* nValue can not exceed this number */
+    /* */
+    /* 8.75 years at 2880 blocks per day * ( 10,000 * 100000000 ) */ 
+	if ( nHeight > 9200000 ) {
+		nSubsidy = 0;
+    }
+		
     return nSubsidy;
 }
 
@@ -1188,16 +1274,34 @@ bool IsInitialBlockDownload()
         return false;
 
     LOCK(cs_main);
+
     if (latchToFalse.load(std::memory_order_relaxed))
         return false;
+
     if (fImporting || fReindex)
         return true;
-    if (chainActive.Tip() == NULL)
-        return true;
-    if (chainActive.Tip()->nChainWork < UintToArith256(chainParams.GetConsensus().nMinimumChainWork))
-        return true;
-    if (chainActive.Tip()->GetBlockTime() < (GetTime() - nMaxTipAge))
-        return true;
+
+    /* cryptodad - add maxtipage=#seconds to apcoin.conf instead - much more user friendly :) */
+    /* cryptodad Dec 2019 - if developing, chain gets stuck here if height is 0 */
+    //if ( chainActive.Height() > 0 ) {
+
+    	/* comment out the following 6 lines if need to kickstart chain */
+        if (chainActive.Tip() == NULL) {
+            LogPrintf ( "%s: check 1\n", __func__ );
+            return true;
+        }
+
+        if (chainActive.Tip()->nChainWork < UintToArith256(chainParams.GetConsensus().nMinimumChainWork)) {
+            LogPrintf ( "%s: check 2 chainwork = %s\n", __func__, chainActive.Tip()->nChainWork.ToString() );
+            return true;
+        }
+
+        if (chainActive.Tip()->GetBlockTime() < (GetTime() - nMaxTipAge)) {
+            LogPrintf ( "%s: check 3\n", __func__ );
+            return true;
+        }
+    //}
+
     latchToFalse.store(true, std::memory_order_relaxed);
     return false;
 }
@@ -1389,17 +1493,17 @@ bool CheckTxInputs(const CChainParams& chainparams, const CTransaction& tx, CVal
             if (coins->IsCoinBase()) {
                 if (!chainparams.GetConsensus().fPowAllowMinDifficultyBlocks) {
                     // Main Network
-                    if (nSpendHeight >= 1452840) {
+                    //if (nSpendHeight >= 1452840) {
                         if (nSpendHeight - coins->nHeight < COINBASE_MATURITY)
                             return state.Invalid(false,
                                 REJECT_INVALID, "bad-txns-premature-spend-of-coinbase",
                                 strprintf("tried to spend coinbase at depth %d", nSpendHeight - coins->nHeight));
-                    } else {
-                        if (nSpendHeight - coins->nHeight < CLASSIC_COINBASE_MATURITY)
-                            return state.Invalid(false,
-                                REJECT_INVALID, "bad-txns-premature-spend-of-coinbase",
-                                strprintf("tried to spend coinbase at depth %d", nSpendHeight - coins->nHeight));
-                    }
+                    //} else {
+                    //    if (nSpendHeight - coins->nHeight < CLASSIC_COINBASE_MATURITY)
+                    //        return state.Invalid(false,
+                     //           REJECT_INVALID, "bad-txns-premature-spend-of-coinbase",
+                    //            strprintf("tried to spend coinbase at depth %d", nSpendHeight - coins->nHeight));
+                    //}
                 } else {
                     if (!chainparams.GetConsensus().fPowNoRetargeting) {
                         // Test Network
@@ -2164,7 +2268,8 @@ void static UpdateTip(CBlockIndex *pindexNew, const CChainParams& chainParams) {
         for (int i = 0; i < 100 && pindex != NULL; i++)
         {
             int32_t nExpectedVersion = ComputeBlockVersion(pindex->pprev, chainParams.GetConsensus());
-            if (pindex->nVersion > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->nVersion & ~nExpectedVersion) != 0)
+            //if (pindex->nVersion > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->nVersion & ~nExpectedVersion) != 0)
+			if (pindex->GetBaseVersion() > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->GetBaseVersion() & ~nExpectedVersion) != 0)
                 ++nUpgraded;
             pindex = pindex->pprev;
         }
@@ -2852,7 +2957,8 @@ bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, unsigne
 bool CheckBlockHeader(const CBlockHeader& block, CValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW)
 {
     // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetPoWHash(), block.nBits, consensusParams))
+    //if (fCheckPOW && !CheckProofOfWork(block.GetPoWHash(), block.nBits, consensusParams))
+	if (fCheckPOW && !CheckProofOfWork(block, consensusParams))
         return state.DoS(50, false, REJECT_INVALID, "high-hash", false, "proof of work failed");
 
     return true;
@@ -2999,7 +3105,14 @@ std::vector<unsigned char> GenerateCoinbaseCommitment(CBlock& block, const CBloc
 
 bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& state, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev, int64_t nAdjustedTime)
 {
+    // Disallow legacy blocks after merge-mining start.
     const int nHeight = pindexPrev == NULL ? 0 : pindexPrev->nHeight + 1;
+    
+    if (!Params().GetConsensus().AllowLegacyBlocks(nHeight) && block.IsLegacy())
+        return state.DoS(100, error("%s : legacy block after auxpow start",
+                                    __func__),
+                         REJECT_INVALID, "late-legacy-block");
+
     // Check proof of work
     if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
         return state.DoS(100, false, REJECT_INVALID, "bad-diffbits", false, "incorrect proof of work");
@@ -3014,9 +3127,12 @@ bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& sta
 
     // Reject outdated version blocks when 95% (75% on testnet) of the network has upgraded:
     // check for version 2, 3 and 4 upgrades
-    if((block.nVersion < 2 && nHeight >= consensusParams.BIP34Height) ||
-       (block.nVersion < 3 && nHeight >= consensusParams.BIP66Height) ||
-       (block.nVersion < 4 && nHeight >= consensusParams.BIP65Height))
+    //if((block.nVersion < 2 && nHeight >= consensusParams.BIP34Height) ||
+    //   (block.nVersion < 3 && nHeight >= consensusParams.BIP66Height) ||
+    //   (block.nVersion < 4 && nHeight >= consensusParams.BIP65Height))
+	if((block.GetBaseVersion() < 2 && nHeight >= consensusParams.BIP34Height) ||
+       (block.GetBaseVersion() < 3 && nHeight >= consensusParams.BIP66Height) ||
+       (block.GetBaseVersion() < 4 && nHeight >= consensusParams.BIP65Height))
             return state.Invalid(false, REJECT_OBSOLETE, strprintf("bad-version(0x%08x)", block.nVersion),
                                  strprintf("rejected nVersion=0x%08x block", block.nVersion));
 

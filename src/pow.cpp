@@ -11,6 +11,7 @@
 #include "uint256.h"
 #include "util.h"
 
+/*
 unsigned int ClassicGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
@@ -27,7 +28,7 @@ unsigned int ClassicGetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
             // Special difficulty rule for testnet:
             // If the new block's timestamp is more than 2 minutes
             // then allow mining of a min-difficulty block.
-            if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing*2)
+            if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing*4)
                 return nProofOfWorkLimit;
             else
             {
@@ -41,7 +42,7 @@ unsigned int ClassicGetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
         return pindexLast->nBits;
     }
 
-    // Mincoin: This fixes an issue where a 51% attack can change difficulty at will.
+    // Apcoin: This fixes an issue where a 51% attack can change difficulty at will.
     // Go back the full period unless it's the first retarget after genesis. Code courtesy of Art Forz
     int blockstogoback = params.ClassicDifficultyAdjustmentInterval()-1;
     if ((pindexLast->nHeight+1) != params.ClassicDifficultyAdjustmentInterval())
@@ -56,7 +57,9 @@ unsigned int ClassicGetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
 
     return CalculateNextWorkRequired(pindexLast, pindexFirst->GetBlockTime(), params);
 }
+*/
 
+/*
 unsigned int RevisedGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
@@ -73,7 +76,7 @@ unsigned int RevisedGetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
             // Special difficulty rule for testnet:
             // If the new block's timestamp is more than 2 minutes
             // then allow mining of a min-difficulty block.
-            if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing*2)
+            if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing*4)
                 return nProofOfWorkLimit;
             else
             {
@@ -87,10 +90,11 @@ unsigned int RevisedGetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
         return pindexLast->nBits;
     }
 
-    // Mincoin: This fixes an issue where a 51% attack can change difficulty at will.
+    // Apcoin: This fixes an issue where a 51% attack can change difficulty at will.
     // Go back the full period unless it's the first retarget after genesis. Code courtesy of Art Forz
     int blockstogoback = params.DifficultyAdjustmentInterval()-1;
-    if ((pindexLast->nHeight+1) != params.DifficultyAdjustmentInterval())
+    if (pindexLast->nHeight >= params.nAuxpowStartHeight
+		&& (pindexLast->nHeight+1) != params.DifficultyAdjustmentInterval())
         blockstogoback = params.DifficultyAdjustmentInterval();
 
     // Go back by what we want to be 1 hour worth of blocks
@@ -102,6 +106,7 @@ unsigned int RevisedGetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
 
     return CalculateNextWorkRequired(pindexLast, pindexFirst->GetBlockTime(), params);
 }
+*/
 
 unsigned int static SplashGuard(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params) {
     // Credits
@@ -117,7 +122,7 @@ unsigned int static SplashGuard(const CBlockIndex* pindexLast, const CBlockHeade
 
     /* current difficulty formula, dash - DarkGravity v3, written by Evan Duffield - evan@dash.org */
     const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
-    int64_t nPastBlocks = 60;
+    int64_t nPastBlocks = 120;
 
     // make sure we have at least (nPastBlocks + 1) blocks, otherwise just return powLimit
     if (!pindexLast || pindexLast->nHeight < nPastBlocks) {
@@ -126,11 +131,11 @@ unsigned int static SplashGuard(const CBlockIndex* pindexLast, const CBlockHeade
 
     if (params.fPowAllowMinDifficultyBlocks) {
         // recent block is more than 2 hours old
-        if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + 2 * 60 * 60) {
+        if (pblock->GetBlockTime() > (pindexLast->GetBlockTime() + (2 * 60 * 60)) ) {
             return bnPowLimit.GetCompact();
         }
         // recent block is more than 10 minutes old
-        if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing * 10) {
+        if (pblock->GetBlockTime() > (pindexLast->GetBlockTime() + (10 * 60) ) ) {  //(params.nPowTargetSpacing * 20) )  {
             arith_uint256 bnNew = arith_uint256().SetCompact(pindexLast->nBits) * 10;
             if (bnNew > bnPowLimit) {
                 bnNew = bnPowLimit;
@@ -182,26 +187,25 @@ unsigned int static SplashGuard(const CBlockIndex* pindexLast, const CBlockHeade
 
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
-    if (!params.fPowAllowMinDifficultyBlocks) {
+	
+    //if (!params.fPowAllowMinDifficultyBlocks) {
+		
         // Main Network
-        if (pindexLast->nHeight + 1 >= 1452840) {
-            return SplashGuard(pindexLast, pblock, params);
-        } else if (pindexLast->nHeight + 1 >= 75000) {
-            return RevisedGetNextWorkRequired(pindexLast, pblock, params);
-        } else {
-            return ClassicGetNextWorkRequired(pindexLast, pblock, params);
-        }
-    } else {
-        if (!params.fPowNoRetargeting) {
+        return SplashGuard(pindexLast, pblock, params);
+       
+    //} else {
+		
+    //    if (!params.fPowNoRetargeting) {
+			
             // Test Network
-            return SplashGuard(pindexLast, pblock, params);
-        } else {
+    //        return SplashGuard(pindexLast, pblock, params);
+   //     } else {
             // RegTest Network
-            return ClassicGetNextWorkRequired(pindexLast, pblock, params);
-        }
-    }
+    //        return ClassicGetNextWorkRequired(pindexLast, pblock, params);
+    //    }
+    //}
 }
-
+/*
 unsigned int ClassicCalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params& params)
 {
     if (params.fPowNoRetargeting)
@@ -219,7 +223,7 @@ unsigned int ClassicCalculateNextWorkRequired(const CBlockIndex* pindexLast, int
     arith_uint256 bnOld;
     bnNew.SetCompact(pindexLast->nBits);
     bnOld = bnNew;
-    // Mincoin: intermediate uint256 can overflow by 1 bit
+    // Apcoin: intermediate uint256 can overflow by 1 bit
     const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
     bool fShift = bnNew.bits() > bnPowLimit.bits() - 1;
     if (fShift)
@@ -234,6 +238,8 @@ unsigned int ClassicCalculateNextWorkRequired(const CBlockIndex* pindexLast, int
 
     return bnNew.GetCompact();
 }
+*/
+
 
 unsigned int RevisedCalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params& params)
 {
@@ -242,8 +248,10 @@ unsigned int RevisedCalculateNextWorkRequired(const CBlockIndex* pindexLast, int
 
     // Limit adjustment step
     int64_t nActualTimespan = pindexLast->GetBlockTime() - nFirstBlockTime;
+    
     if (nActualTimespan < params.nPowTargetTimespan/2)
         nActualTimespan = params.nPowTargetTimespan/2;
+
     if (nActualTimespan > params.nPowTargetTimespan*8)
         nActualTimespan = params.nPowTargetTimespan*8;
 
@@ -252,13 +260,17 @@ unsigned int RevisedCalculateNextWorkRequired(const CBlockIndex* pindexLast, int
     arith_uint256 bnOld;
     bnNew.SetCompact(pindexLast->nBits);
     bnOld = bnNew;
-    // Mincoin: intermediate uint256 can overflow by 1 bit
+
+    // Apcoin: intermediate uint256 can overflow by 1 bit
     const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
     bool fShift = bnNew.bits() > bnPowLimit.bits() - 1;
+
     if (fShift)
         bnNew >>= 1;
+
     bnNew *= nActualTimespan;
     bnNew /= params.nPowTargetTimespan;
+
     if (fShift)
         bnNew <<= 1;
 
@@ -268,15 +280,14 @@ unsigned int RevisedCalculateNextWorkRequired(const CBlockIndex* pindexLast, int
     return bnNew.GetCompact();
 }
 
+
+
 unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params& params)
 {
     // Main Network
-    if (pindexLast->nHeight + 1 >= 75000) {
-        return RevisedCalculateNextWorkRequired(pindexLast, nFirstBlockTime, params);
-    } else {
-        return ClassicCalculateNextWorkRequired(pindexLast, nFirstBlockTime, params);
-    }
+    return RevisedCalculateNextWorkRequired(pindexLast, nFirstBlockTime, params);
 }
+
 
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params& params)
 {
@@ -289,10 +300,12 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     // Check range
     if (fNegative || bnTarget == 0 || fOverflow || bnTarget > UintToArith256(params.powLimit))
         return false;
-
+    
     // Check proof of work matches claimed amount
-    if (UintToArith256(hash) > bnTarget)
+    if (UintToArith256(hash) > bnTarget){
+        error("%s: hash %s > bnTarget %s", __func__, hash.ToString(), bnTarget.ToString() );
         return false;
+    }
 
     return true;
 }

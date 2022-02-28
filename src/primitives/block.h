@@ -6,9 +6,13 @@
 #ifndef BITCOIN_PRIMITIVES_BLOCK_H
 #define BITCOIN_PRIMITIVES_BLOCK_H
 
+#include "auxpow.h"
 #include "primitives/transaction.h"
+#include "primitives/pureheader.h"
 #include "serialize.h"
 #include "uint256.h"
+
+#include <boost/shared_ptr.hpp>
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
@@ -17,16 +21,20 @@
  * in the block is a special one that creates a new coin owned by the creator
  * of the block.
  */
-class CBlockHeader
+class CBlockHeader : public CPureBlockHeader
 {
 public:
+
+	// auxpow (if this is a merge-mined block)
+    boost::shared_ptr<CAuxPow> auxpow;
+
     // header
-    int32_t nVersion;
-    uint256 hashPrevBlock;
-    uint256 hashMerkleRoot;
-    uint32_t nTime;
-    uint32_t nBits;
-    uint32_t nNonce;
+    //int32_t nVersion;
+    //uint256 hashPrevBlock;
+    //uint256 hashMerkleRoot;
+    //uint32_t nTime;
+    //uint32_t nBits;
+    //uint32_t nNonce;
 
     CBlockHeader()
     {
@@ -37,25 +45,46 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(this->nVersion);
-        READWRITE(hashPrevBlock);
-        READWRITE(hashMerkleRoot);
-        READWRITE(nTime);
-        READWRITE(nBits);
-        READWRITE(nNonce);
+        //READWRITE(this->nVersion);
+        //READWRITE(hashPrevBlock);
+        //READWRITE(hashMerkleRoot);
+        //READWRITE(nTime);
+        //READWRITE(nBits);
+        //READWRITE(nNonce);
+
+		READWRITE(*(CPureBlockHeader*)this);
+
+        if (this->IsAuxpow())
+        {
+            if (ser_action.ForRead())
+                auxpow.reset (new CAuxPow());
+            assert(auxpow);
+            READWRITE(*auxpow);
+        } else if (ser_action.ForRead())
+            auxpow.reset();
     }
 
     void SetNull()
     {
-        nVersion = 0;
-        hashPrevBlock.SetNull();
-        hashMerkleRoot.SetNull();
-        nTime = 0;
-        nBits = 0;
-        nNonce = 0;
+        //nVersion = 0;
+        //hashPrevBlock.SetNull();
+        //hashMerkleRoot.SetNull();
+        //nTime = 0;
+        //nBits = 0;
+        //nNonce = 0;
+
+		CPureBlockHeader::SetNull();
+        auxpow.reset();
     }
 
-    bool IsNull() const
+	/**
+     * Set the block's auxpow (or unset it).  This takes care of updating
+     * the version accordingly.
+     * @param apow Pointer to the auxpow to use or NULL.
+     */
+    void SetAuxpow (CAuxPow* apow);
+
+  /*  bool IsNull() const
     {
         return (nBits == 0);
     }
@@ -67,7 +96,8 @@ public:
     int64_t GetBlockTime() const
     {
         return (int64_t)nTime;
-    }
+    }*/
+    uint256 GetPoWHash() const;
 };
 
 
@@ -115,6 +145,7 @@ public:
         block.nTime          = nTime;
         block.nBits          = nBits;
         block.nNonce         = nNonce;
+        block.auxpow         = auxpow;
         return block;
     }
 
